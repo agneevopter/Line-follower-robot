@@ -1,0 +1,174 @@
+#define enA 5 // Enable pin for Left Motor
+#define in1 8  // Forward pin for Left Motor
+#define in2 9  // Backward pin for Left Motor
+#define in3 7  // Forward pin for Right Motor
+#define in4 6  // Backward pin for Right Motor
+#define enB 10  // Enable pin for Right Motor
+
+#define L_S A0 // IR sensor Left
+#define R_S A1 // IR sensor Right
+#define R_T A2 // Additional sensor for detecting sharp right turns  
+#define L_T A3 // Additional sensor for detecting sharp left turns  
+
+// PID Constants
+float Kp = 1.0;  // Proportional gain
+float Ki = 0.0;  // Integral gain
+float Kd = 0.5;  // Derivative gain
+
+// Variables for PID
+float error = 0;            // Error value
+float previous_error = 0;   // Previous error for derivative term
+float integral = 0;         // Integral term
+float correction = 0;       // PID correction value
+
+// Motor speed base and adjustment
+int baseSpeed = 255;        // Base speed of the motors
+int maxSpeed = 255;         // Maximum speed
+int minSpeed = 0;           // Minimum speed
+
+void setup() { 
+  Serial.begin(9600); // Start serial communication at 9600bps
+
+  pinMode(R_S, INPUT); // Declare Right IR sensor as input  
+  pinMode(L_S, INPUT); // Declare Left IR sensor as input  
+  pinMode(R_T, INPUT); // Declare Additional IR sensor as input  
+  pinMode(L_T, INPUT); // Declare Additional IR sensor as input  
+
+
+  pinMode(enA, OUTPUT); // Enable pin for Left Motor
+  pinMode(in1, OUTPUT); // Forward control pin for Left Motor
+  pinMode(in2, OUTPUT); // Backward control pin for Left Motor
+  pinMode(in3, OUTPUT); // Forward control pin for Right Motor   
+  pinMode(in4, OUTPUT); // Backward control pin for Right Motor
+  pinMode(enB, OUTPUT); // Enable pin for Right Motor
+
+  analogWrite(enA, baseSpeed); // Set initial speed for Left Motor
+  analogWrite(enB, baseSpeed); // Set initial speed for Right Motor
+}
+
+void loop() {  
+  // Read sensor values
+  int leftSensor = digitalRead(L_S);  // Left IR sensor
+  int rightSensor = digitalRead(R_S); // Right IR sensor
+  int rightTurnSensor = digitalRead(R_T); // Additional IR sensor
+  int leftTurnSensor = digitalRead(L_T); // Additional IR sensor
+ 
+
+  //==============================================
+  //       Error Calculation
+  //==============================================  
+
+  if (leftSensor == 0 && rightSensor == 0) { // Both sensors on white
+    error = 0;
+  } else if (leftSensor == 1 && rightSensor == 0) { // Left sensor on black
+    error = -1;
+  } else if (leftSensor == 0 && rightSensor == 1) { // Right sensor on black
+    error = 1;
+  } else if (leftSensor == 1 && rightSensor == 1) { // Both sensors on black
+    error = 0; // Centered (or could stop)
+  }
+
+  // Sharp right turn logic
+  if (rightSensor == 1 && rightTurnSensor == 1) {
+    sharpRightTurn();
+    return; // Skip normal operation when making a sharp turn
+  }
+
+
+// Sharp Left  turn Logic
+if (leftSensor == 1 && leftTurnSensor == 1) {
+    sharpLeftTurn();
+    return; // Skip normal operation when making a sharp turn
+}
+
+
+  //==============================================
+  //       PID Calculation
+  //==============================================  
+  integral += error;  // Accumulate integral
+  float derivative = error - previous_error; // Calculate derivative
+  correction = (Kp * error) + (Ki * integral) + (Kd * derivative); // PID formula
+  previous_error = error; // Store error for next iteration
+
+  //==============================================
+  //       Adjust Motor Speeds
+  //==============================================  
+  int leftSpeed = constrain(baseSpeed - correction, minSpeed, maxSpeed);
+  int rightSpeed = constrain(baseSpeed + correction, minSpeed, maxSpeed);
+
+  setMotorSpeeds(leftSpeed, rightSpeed);
+
+  delay(10); // Short delay for stability
+
+
+
+
+  }
+
+void setMotorSpeeds(int leftSpeed, int rightSpeed) {
+  if (leftSpeed > 0) { // Forward
+    analogWrite(enA, leftSpeed);
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
+  } else { // Stop or Reverse
+    analogWrite(enA, -leftSpeed);
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+  }
+
+  if (rightSpeed > 0) { // Forward
+    analogWrite(enB, rightSpeed);
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);
+  } else { // Stop or Reverse
+    analogWrite(enB, -rightSpeed);
+    digitalWrite(in3, LOW);
+    digitalWrite(in4, HIGH);
+  }
+}
+
+void Stop() { // Stop motors
+  analogWrite(enA, 0);
+  analogWrite(enB, 0);
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, LOW);
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, LOW);
+}
+
+void sharpRightTurn() {
+  Serial.println("Sharp Right Turn");
+  // Stop the left motor and run the right motor backward to make a sharp turn
+  analogWrite(enB, 0); // Stop right motor
+  analogWrite(enA, baseSpeed); // Run  motor at base speed
+  digitalWrite(in1,LOW);
+  digitalWrite(in2,HIGH);
+
+  analogWrite(enB, baseSpeed);  
+  digitalWrite(in3, HIGH);
+  digitalWrite(in4, LOW); // Right motor backward
+
+  delay(500); // Adjust the delay for the sharpness of the turn
+  Stop(); // Stop motors after the turn
+}
+
+
+
+
+
+void sharpLeftTurn() {
+  Serial.println("Sharp Left Turn");
+  // Stop the left motor and run the right motor backward to make a sharp turn
+  analogWrite(enA, 0); // Stop right motor
+  analogWrite(enB, baseSpeed); // Run  motor at base speed
+  digitalWrite(in3,LOW);
+  digitalWrite(in4,HIGH);
+
+  analogWrite(enA, baseSpeed);  
+  digitalWrite(in1, HIGH);
+  digitalWrite(in2, LOW); // Right motor backward
+
+  delay(100); // Adjust the delay for the sharpness of the turn
+  Stop(); // Stop motors after the turn
+}
+
